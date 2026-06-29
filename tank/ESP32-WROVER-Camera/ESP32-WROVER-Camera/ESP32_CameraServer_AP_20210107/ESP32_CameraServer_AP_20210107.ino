@@ -8,8 +8,37 @@
  */
 //#include <EEPROM.h>
 #include "CameraWebServer_AP.h"
+#include "config.h"
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include "esp_camera.h"
+
+static const char *DEVICE_ID = "tank-01";
+
+void heartbeatTask(void *pvParameters) {
+  for (;;) {
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      String url = "http://" + String(HUB_HOST) + ":" + String(HUB_PORT) + "/api/message";
+      http.begin(url);
+      http.addHeader("Content-Type", "application/json");
+
+      String body = String("{\"type\":\"heartbeat\",\"device_id\":\"") + DEVICE_ID +
+                    "\",\"ts\":" + String(millis() / 1000.0, 3) + ",\"payload\":{}}";
+
+      int code = http.POST(body);
+      if (code > 0) {
+        Serial.printf("[heartbeat] sent ok, server responded: %d\n", code);
+      } else {
+        Serial.printf("[heartbeat] failed: %s\n", http.errorToString(code).c_str());
+      }
+      http.end();
+    } else {
+      Serial.println("[heartbeat] WiFi not connected, skipping");
+    }
+    vTaskDelay(pdMS_TO_TICKS(30UL * 60UL * 1000UL));  // 30 minutes
+  }
+}
 WiFiServer server(100);
 
 #define RXD2 33
@@ -185,11 +214,26 @@ void FactoryTest(void)
 void setup()
 {
   Serial.begin(9600);
+  delay(2000);  // let USB serial settle before printing
+  Serial.println("[setup] started");
+
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
-  //http://192.168.4.1/control?var=framesize&val=3
-  //http://192.168.4.1/Test?var=
-  CameraWebServerAP.CameraWebServer_AP_Init();
-  server.begin();
+  Serial.println("[setup] Serial2 ready");
+
+  // CameraWebServerAP.initCamera();   // skip on boards without camera
+  Serial.println("[setup] skipping camera init (no camera on this board)");
+
+  Serial.println("[setup] attempting WiFi STA connection...");
+  if (CameraWebServerAP.connectToRouter(HOME_SSID, HOME_PASSWORD, 10000)) {
+    Serial.println("[setup] STA mode active");
+    xTaskCreate(heartbeatTask, "heartbeat", 8192, NULL, 1, NULL);
+    Serial.println("[setup] heartbeat task started (every 30 min)");
+  } else {
+    Serial.println("[setup] STA failed, falling back to AP mode");
+    CameraWebServerAP.setupAP();
+    server.begin();
+    Serial.println("[setup] AP mode ready");
+  }
   delay(100);
   // while (Serial.read() >= 0)
   // {

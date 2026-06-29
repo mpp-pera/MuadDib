@@ -16,7 +16,9 @@ class CameraWebServer_AP
 {
 
 public:
-  void CameraWebServer_AP_Init(void);
+  void initCamera(void);
+  void setupAP(void);
+  void CameraWebServer_AP_Init(void);   // legacy: initCamera() + setupAP()
   bool connectToRouter(const char *ssid, const char *password, unsigned long timeoutMs = 10000);
   String wifi_name;
 

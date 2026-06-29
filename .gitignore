@@ -1,0 +1,2 @@
+# local device config — contains credentials, never commit
+**/config.h

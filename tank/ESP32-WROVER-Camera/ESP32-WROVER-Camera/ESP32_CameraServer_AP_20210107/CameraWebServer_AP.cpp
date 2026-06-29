@@ -40,7 +40,8 @@
 // BLEAdvertisedDevice _BLEAdvertisedDevice;
 
 void startCameraServer();
-void CameraWebServer_AP::CameraWebServer_AP_Init(void)
+
+void CameraWebServer_AP::initCamera(void)
 {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -63,7 +64,6 @@ void CameraWebServer_AP::CameraWebServer_AP_Init(void)
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  //init with high specs to pre-allocate larger buffers
   if (psramFound())
   {
     config.frame_size = FRAMESIZE_UXGA;
@@ -81,7 +81,7 @@ void CameraWebServer_AP::CameraWebServer_AP_Init(void)
   pinMode(13, INPUT_PULLUP);
   pinMode(14, INPUT_PULLUP);
 #endif
-  // camera init
+
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
   {
@@ -89,23 +89,20 @@ void CameraWebServer_AP::CameraWebServer_AP_Init(void)
     return;
   }
   sensor_t *s = esp_camera_sensor_get();
-  //drop down frame size for higher initial frame rate
-  //s->set_framesize(s, FRAMESIZE_SXGA); //字节长度采样值:60000                 #9 (画质高)  1280x1024
-  s->set_framesize(s, FRAMESIZE_SVGA); //字节长度采样值:40000                   #7 (画质中)  800x600
-  // s->set_framesize(s, FRAMESIZE_QVGA); //字节长度采样值:10000                #4 (画质低)  320x240
+  s->set_framesize(s, FRAMESIZE_SVGA);
 
 #if defined(CAMERA_MODEL_M5STACK_WIDE)
   s->set_vflip(s, 0);
   s->set_hmirror(s, 1);
 #endif
-  s->set_vflip(s, 0);   //图片方向设置（上下）
-  s->set_hmirror(s, 0); //图片方向设置（左右）
-
-  // s->set_vflip(s, 1);   //图片方向设置（上下）
-  // s->set_hmirror(s, 1); //图片方向设置（左右）
+  s->set_vflip(s, 0);
+  s->set_hmirror(s, 0);
 
   Serial.println("\r\n");
+}
 
+void CameraWebServer_AP::setupAP(void)
+{
   uint64_t chipid = ESP.getEfuseMac();
   char string[10];
   sprintf(string, "%04X", (uint16_t)(chipid >> 32));
@@ -129,6 +126,12 @@ void CameraWebServer_AP::CameraWebServer_AP_Init(void)
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.softAPIP());
   Serial.println("' to connect");
+}
+
+void CameraWebServer_AP::CameraWebServer_AP_Init(void)
+{
+  initCamera();
+  setupAP();
 }
 
 bool CameraWebServer_AP::connectToRouter(const char *ssid, const char *password, unsigned long timeoutMs)
