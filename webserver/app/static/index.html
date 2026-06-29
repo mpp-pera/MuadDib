@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    .badge-online  { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30; }
+    .badge-offline { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 ring-1 ring-gray-600; }
+  </style>
+</head>
+<body class="h-full text-gray-100 font-sans">
+
+  <!-- header -->
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">H</div>
+      <span class="text-lg font-semibold tracking-tight">IoT Hub</span>
+    </div>
+    <span id="device-count" class="text-sm text-gray-400"></span>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-8">
+
+    <!-- register form -->
+    <section class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Register Device</h2>
+      <form id="reg-form" class="flex flex-wrap gap-3 items-end">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-gray-500">Device ID</label>
+          <input name="device_id" required placeholder="tank-01"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-36">
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-gray-500">Name</label>
+          <input name="name" required placeholder="Conqueror Tank"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44">
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-gray-500">Type</label>
+          <input name="device_type" placeholder="esp32-tank"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-36">
+        </div>
+        <button type="submit"
+          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors">
+          Register
+        </button>
+        <span id="reg-msg" class="text-sm hidden"></span>
+      </form>
+    </section>
+
+    <!-- device table -->
+    <section class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Devices</h2>
+        <button onclick="refreshDevices()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">Refresh</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-800 text-left text-xs text-gray-500 uppercase tracking-wider">
+              <th class="px-6 py-3">Device</th>
+              <th class="px-6 py-3">Type</th>
+              <th class="px-6 py-3">Status</th>
+              <th class="px-6 py-3">Last Heartbeat</th>
+              <th class="px-6 py-3">Registered</th>
+              <th class="px-6 py-3"></th>
+            </tr>
+          </thead>
+          <tbody id="device-tbody">
+            <tr><td colspan="6" class="px-6 py-8 text-center text-gray-600">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    const fmtTs = (ts) => {
+      if (!ts) return '—';
+      const d = new Date(ts * 1000);
+      const diff = (Date.now() - d) / 1000;
+      if (diff < 60)  return `${Math.round(diff)}s ago`;
+      if (diff < 3600) return `${Math.round(diff/60)}m ago`;
+      return d.toLocaleTimeString();
+    };
+
+    const fmtDate = (ts) => ts ? new Date(ts * 1000).toLocaleDateString() : '—';
+
+    const renderRow = (d) => `
+      <tr class="border-b border-gray-800/60 hover:bg-gray-800/40 transition-colors">
+        <td class="px-6 py-4">
+          <div class="font-medium text-gray-100">${esc(d.name)}</div>
+          <div class="text-xs text-gray-500 font-mono">${esc(d.id)}</div>
+        </td>
+        <td class="px-6 py-4 text-gray-400">${esc(d.device_type || '—')}</td>
+        <td class="px-6 py-4">
+          ${ d.status === 'online'
+            ? '<span class="badge-online"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>Online</span>'
+            : '<span class="badge-offline"><span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>Offline</span>' }
+        </td>
+        <td class="px-6 py-4 text-gray-400 font-mono text-xs">${fmtTs(d.last_heartbeat)}</td>
+        <td class="px-6 py-4 text-gray-400 text-xs">${fmtDate(d.registered_at)}</td>
+        <td class="px-6 py-4 text-right">
+          <button onclick="deleteDevice('${esc(d.id)}')"
+            class="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10">
+            Remove
+          </button>
+        </td>
+      </tr>`;
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    async function refreshDevices() {
+      const res = await fetch('/api/devices');
+      const devices = await res.json();
+      const tbody = document.getElementById('device-tbody');
+      if (devices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-600">No devices registered yet.</td></tr>';
+      } else {
+        tbody.innerHTML = devices.map(renderRow).join('');
+      }
+      const online = devices.filter(d => d.status === 'online').length;
+      document.getElementById('device-count').textContent =
+        `${devices.length} device${devices.length !== 1 ? 's' : ''} · ${online} online`;
+    }
+
+    async function deleteDevice(id) {
+      if (!confirm(`Remove device "${id}"?`)) return;
+      await fetch(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      refreshDevices();
+    }
+
+    document.getElementById('reg-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = { name: fd.get('name'), device_type: fd.get('device_type') };
+      const pkt = { type: 'register', device_id: fd.get('device_id'), ts: Date.now()/1000, payload };
+      const res = await fetch('/api/message', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(pkt)
+      });
+      const resp = await res.json();
+      const msg = document.getElementById('reg-msg');
+      if (resp.type === 'register_ack') {
+        msg.textContent = 'Registered!';
+        msg.className = 'text-sm text-emerald-400';
+        e.target.reset();
+        refreshDevices();
+      } else {
+        msg.textContent = resp.payload?.reason || 'Error';
+        msg.className = 'text-sm text-red-400';
+      }
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 3000);
+    });
+
+    refreshDevices();
+    setInterval(refreshDevices, 5000);
+  </script>
+</body>
+</html>
