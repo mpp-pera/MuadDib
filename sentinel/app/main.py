@@ -1,11 +1,12 @@
 import asyncio
+import html
 import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import database as db
@@ -42,6 +43,15 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.get("/", include_in_schema=False)
 async def dashboard():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/device/{device_id}", include_in_schema=False)
+async def device_page(device_id: str):
+    row = db.get_device(device_id)
+    if row is None:
+        raise HTTPException(404, "device not found")
+    name = html.escape(dict(row)["name"])
+    return HTMLResponse(f"<!DOCTYPE html><html><body>This is the page for {name}</body></html>")
 
 
 # --- device REST ---

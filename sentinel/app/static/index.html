@@ -103,7 +103,7 @@
     const renderRow = (d) => `
       <tr class="border-b border-gray-800/60 hover:bg-gray-800/40 transition-colors">
         <td class="px-6 py-4">
-          <div class="font-medium text-gray-100">${esc(d.name)}</div>
+          <a href="/device/${esc(d.id)}" class="font-medium text-gray-100 hover:text-indigo-400 hover:underline transition-colors">${esc(d.name)}</a>
           <div class="text-xs text-gray-500 font-mono">${esc(d.id)}</div>
         </td>
         <td class="px-6 py-4 text-gray-400">${esc(d.device_type || '—')}</td>
