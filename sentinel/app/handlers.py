@@ -17,6 +17,9 @@ async def handle_register(pkt: Packet) -> Packet:
 async def handle_heartbeat(pkt: Packet) -> Packet:
     if not db.update_heartbeat(pkt.device_id):
         return error_packet(pkt, "device not registered")
+    ip = pkt.payload.get("ip")
+    if ip:
+        db.update_device_meta(pkt.device_id, {"ip": ip})
     return make_response(pkt, "heartbeat_ack")
 
 

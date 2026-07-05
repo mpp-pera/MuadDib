@@ -13,9 +13,12 @@
 #include <HTTPClient.h>
 #include "esp_camera.h"
 
+extern void startCameraServer();
+
 static const char *DEVICE_ID = "tank-01";
 static bool g_staMode = false;
 static volatile float g_batteryV = 0.0;
+static volatile bool g_batteryValid = false;
 
 void heartbeatTask(void *pvParameters) {
   for (;;) {
@@ -26,7 +29,8 @@ void heartbeatTask(void *pvParameters) {
       http.addHeader("Content-Type", "application/json");
 
       String body = String("{\"type\":\"heartbeat\",\"device_id\":\"") + DEVICE_ID +
-                    "\",\"ts\":" + String(millis() / 1000.0, 3) + ",\"payload\":{}}";
+                    "\",\"ts\":" + String(millis() / 1000.0, 3) + ",\"payload\":{\"ip\":\"" +
+                    WiFi.localIP().toString() + "\"}}";
 
       int code = http.POST(body);
       if (code > 0) {
@@ -43,7 +47,11 @@ void heartbeatTask(void *pvParameters) {
 }
 void telemetryTask(void *pvParameters) {
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(10UL * 60UL * 1000UL));  // 10 minutes
+    vTaskDelay(pdMS_TO_TICKS(1UL * 60UL * 1000UL));  // 1 minute
+    if (!g_batteryValid) {
+      Serial.println("[telemetry] no battery reading yet, skipping");
+      continue;
+    }
     if (WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
       String url = "http://" + String(HUB_HOST) + ":" + String(HUB_PORT) + "/api/message";
@@ -88,6 +96,7 @@ void readSerial2() {
             String valStr = buf.substring(colon + 1, brace);
             valStr.trim();
             g_batteryV = valStr.toFloat();
+            g_batteryValid = true;
             Serial.printf("[serial2] battery update: %.2fV\n", (float)g_batteryV);
           }
         }
@@ -278,13 +287,17 @@ void setup()
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   Serial.println("[setup] Serial2 ready");
 
-  // CameraWebServerAP.initCamera();   // skip on boards without camera
-  Serial.println("[setup] skipping camera init (no camera on this board)");
+  Serial.println("[setup] initializing camera...");
+  CameraWebServerAP.initCamera();
 
   Serial.println("[setup] attempting WiFi STA connection...");
   if (CameraWebServerAP.connectToRouter(HOME_SSID, HOME_PASSWORD, 10000)) {
     g_staMode = true;
     Serial.println("[setup] STA mode active");
+    startCameraServer();
+    Serial.print("[setup] camera stream ready at http://");
+    Serial.print(WiFi.localIP());
+    Serial.println(":81/stream");
     xTaskCreate(heartbeatTask, "heartbeat", 8192, NULL, 1, NULL);
     xTaskCreate(telemetryTask, "telemetry", 8192, NULL, 1, NULL);
     Serial.println("[setup] heartbeat + telemetry tasks started");

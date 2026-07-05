@@ -326,9 +326,9 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void)
     }
   }
 
-  { /* Battery voltage report to ESP32 every 10 real minutes */
+  { /* Battery voltage report to ESP32 every 1 real minute */
     static unsigned long VoltageReport_time = 0;
-    if (_millis() - VoltageReport_time > 2400000UL) // 10min * 60s * 1000ms * TimeCompensation(4)
+    if (_millis() - VoltageReport_time > 240000UL) // 1min * 60s * 1000ms * TimeCompensation(4)
     {
       VoltageReport_time = _millis();
       char buf[8];

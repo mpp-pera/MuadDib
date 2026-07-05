@@ -646,6 +646,39 @@ static esp_err_t cmd_handler(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+/* Pan/tilt camera mount control: forwards a servo-move command to the tank's
+ * main Arduino board over Serial2, using its existing joystick-servo protocol
+ * (<N:106> D1: 1=tilt up, 2=tilt down, 3=pan left, 4=pan right, 5=center). */
+static esp_err_t servo_handler(httpd_req_t *req)
+{
+    char qbuf[32] = {0};
+    char dir[16] = {0};
+    int d1 = -1;
+
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len > 1 && buf_len <= sizeof(qbuf) &&
+        httpd_req_get_url_query_str(req, qbuf, buf_len) == ESP_OK &&
+        httpd_query_key_value(qbuf, "dir", dir, sizeof(dir)) == ESP_OK)
+    {
+        if (!strcmp(dir, "up")) d1 = 1;
+        else if (!strcmp(dir, "down")) d1 = 2;
+        else if (!strcmp(dir, "left")) d1 = 3;
+        else if (!strcmp(dir, "right")) d1 = 4;
+        else if (!strcmp(dir, "center")) d1 = 5;
+    }
+
+    if (d1 < 0)
+    {
+        httpd_resp_send_404(req);
+        return ESP_FAIL;
+    }
+
+    Serial2.printf("{\"N\":106,\"D1\":%d}", d1);
+
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, NULL, 0);
+}
+
 static esp_err_t status_handler(httpd_req_t *req)
 {
     static char json_response[1024];
@@ -924,6 +957,7 @@ static esp_err_t Test2_handler(httpd_req_t *req)
 void startCameraServer()
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.max_uri_handlers = 9;
 
     httpd_uri_t index_uri = {
         .uri = "/",
@@ -941,6 +975,12 @@ void startCameraServer()
         .uri = "/control",
         .method = HTTP_GET,
         .handler = cmd_handler,
+        .user_ctx = NULL};
+
+    httpd_uri_t servo_uri = {
+        .uri = "/servo",
+        .method = HTTP_GET,
+        .handler = servo_handler,
         .user_ctx = NULL};
 
     httpd_uri_t capture_uri = {
@@ -996,6 +1036,7 @@ void startCameraServer()
     {
         httpd_register_uri_handler(camera_httpd, &index_uri);
         httpd_register_uri_handler(camera_httpd, &cmd_uri);
+        httpd_register_uri_handler(camera_httpd, &servo_uri);
         httpd_register_uri_handler(camera_httpd, &status_uri);
         httpd_register_uri_handler(camera_httpd, &capture_uri);
         httpd_register_uri_handler(camera_httpd, &Test_uri);
